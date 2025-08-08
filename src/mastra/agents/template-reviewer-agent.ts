@@ -1,37 +1,20 @@
-import { Agent, createTool } from "@mastra/core";
+import { Agent } from "@mastra/core";
 import type { Container } from "inversify";
-import {
-  projectSetupStepInputSchema,
-  templateReviewerWorkflow,
-} from "../workflows/template-reviewer-workflow/index.js";
+import { templateReviewerWorkflow } from "../workflows/template-reviewer-workflow/index.js";
 import { Memory } from "@mastra/memory";
 import { LibSQLStore } from "@mastra/libsql";
 import type { LanguageModel } from "ai";
 import { MODEL_SYMBOL } from "../infra/model/index.js";
-import z from "zod";
 import { ProjectRepository } from "../infra/repositories/project.js";
-
-// Zod schema for list tool input parameters
-const listProjectsInputSchema = z
-  .object({
-    id: z.string().optional().describe("Filter by project ID"),
-    status: z
-      .string()
-      .optional()
-      .describe(
-        "Filter by project status (e.g., 'initialized', 'ready', 'evaluated')"
-      ),
-    name: z
-      .string()
-      .optional()
-      .describe("Filter by project name (case-insensitive partial match)"),
-    repoURL: z.string().optional().describe("Filter by repository URL"),
-  })
-  .optional();
+import { googleSheetsTool } from "../tools/google-sheets-tool.js";
+import { listProjectsTool } from "../tools/list-projects-tool.js";
+import { Config } from "../domain/aggregates/config.js";
 
 export const templateReviewerAgent = (container: Container) => {
   const model = container.get<LanguageModel>(MODEL_SYMBOL);
   const repository = container.get(ProjectRepository);
+  const config = container.get(Config);
+
   return new Agent({
     name: "Mastra Template Reviewer Agent",
     model: model,
@@ -39,16 +22,13 @@ export const templateReviewerAgent = (container: Container) => {
       templateReviewerWorkflow: templateReviewerWorkflow(container),
     },
     tools: {
-      listExistingResults: createTool({
-        description:
-          "List existing template reviews/projects with optional filters",
-        id: "listExistingResults",
-        inputSchema: listProjectsInputSchema,
-        execute: async (filters) => {
-          console.log("Listing projects with filters:", filters);
-          return (await repository.list(filters)).map((r) => r.toDTO());
-        },
-        outputSchema: z.array(projectSetupStepInputSchema),
+      listExistingResults: listProjectsTool({
+        repository: repository,
+      }),
+      googleSheets: googleSheetsTool({
+        arcadeApiKey: config.ARCADE_API_KEY,
+        arcadeUserId: config.ARCADE_USER_ID,
+        defaultSpreadsheetId: config.GOOGLE_SHEETS_SPREADSHEET_ID,
       }),
     },
     instructions: `You are "CoordinatorAgent", an agent powered by **Mastra** to review and rate template submissions for the Mastra hackathon.
@@ -86,9 +66,17 @@ On first user message, greet exactly once with:
        - "archived" → 📦  
    • If no matches, say so and suggest different filter criteria.
 
+3. **Fetch Google Spreadsheet data**  
+   • Tool: "googleSheets".  
+   • Required payload: "{ spreadsheet_id }".  
+   • This tool integrates with Arcade AI to fetch data from Google Spreadsheets.
+   • On first use, the tool may require authorization - follow the provided link to authorize.
+   • Returns spreadsheet data in JSON format for analysis or reference.
+
 ──────────────────────────  INTERACTION GUIDELINES  ─────────────────
-• Validate missing required fields before invoking "runWorkflow".  
+• Validate missing required fields before invoking tools.  
 • Confirm the repo URL and any returned "projectId" before starting a review.  
+• For Google Sheets, ensure you have the correct spreadsheet ID.
 • Keep replies concise and use emojis only when they add clarity.  
 • Never reveal internal implementation details or environment variables.
 

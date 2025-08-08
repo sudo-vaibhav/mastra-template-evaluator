@@ -8,11 +8,17 @@ export class Config {
   OPENAI_API_KEY: string;
   ANTHROPIC_API_KEY: string;
   GOOGLE_GENERATIVE_AI_API_KEY: string;
+  ARCADE_API_KEY: string | undefined;
+  ARCADE_USER_ID: string | undefined;
+  GOOGLE_SHEETS_SPREADSHEET_ID: string | undefined;
   constructor(props?: {
     DB_NAME?: string;
     MONGODB_URI?: string;
     OPENROUTER_API_KEY?: string;
     OPENAI_API_KEY?: string;
+    ARCADE_API_KEY?: string;
+    ARCADE_USER_ID?: string;
+    GOOGLE_SHEETS_SPREADSHEET_ID?: string;
   }) {
     this.DB_NAME =
       props?.DB_NAME ||
@@ -37,6 +43,20 @@ export class Config {
     this.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
     this.GOOGLE_GENERATIVE_AI_API_KEY =
       process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
+    this.ARCADE_API_KEY =
+      props?.ARCADE_API_KEY || process.env.ARCADE_API_KEY || undefined;
+    this.ARCADE_USER_ID =
+      props?.ARCADE_USER_ID ||
+      process.env.ARCADE_USER_ID ||
+      (() => {
+        throw new Error("ARCADE_USER_ID is not set");
+      })();
+    this.GOOGLE_SHEETS_SPREADSHEET_ID =
+      props?.GOOGLE_SHEETS_SPREADSHEET_ID ||
+      process.env.GOOGLE_SHEETS_SPREADSHEET_ID ||
+      (() => {
+        throw new Error("GOOGLE_SHEETS_SPREADSHEET_ID is not set");
+      })();
   }
 
   public get aiAPIKeys() {

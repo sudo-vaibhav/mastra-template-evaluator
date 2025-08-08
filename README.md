@@ -100,6 +100,8 @@ The system automatically analyzes:
 - **⚙️ Environment Variable Injection** - Seamless config propagation from parent to testing playgrounds
 - **Dependency Injection** - Leverages InversifyJS for loose coupling and testability
 - **Multi-Agent Coordination** - Specialized agents working in orchestrated harmony
+- **🎮 Arcade AI Integration** - Direct Google Sheets access through Arcade's tool ecosystem
+- **📊 Automated Form Processing** - Google Forms responses automatically feed into evaluation workflow
 - **Template Ready** - A complete Mastra template showcasing advanced patterns
 
 ## 🏗️ Architecture
@@ -568,7 +570,46 @@ The AI automatically detected sponsor eligibilities based on:
 ### 💉 Dependency Injection Architecture
 **Comprehensive IoC implementation** using InversifyJS - a nice add for mastra templates library in my opinion:
 
-#### 🔧 **Container Setup** (`index.ts`)
+### 🎮 Arcade AI Integration
+
+> **⏰ Extension Enhancement**: The Arcade AI integration and Google Forms workflow was added during the **3-hour extension period** granted by judges and was not part of the original hackathon submission. This demonstrates the system's extensibility and rapid integration capabilities.
+
+### 📊 **Google Sheets Tool** (`google-sheets-tool.ts`)
+Seamlessly integrates with Google Sheets through Arcade AI's tool ecosystem:
+
+```typescript
+export const googleSheetsTool = ({ arcadeApiKey, arcadeUserId, defaultSpreadsheetId }) => {
+  return createTool({
+    id: "get_google_spreadsheet",
+    description: "Fetch data from a Google Spreadsheet using Arcade AI",
+    execute: async ({ context }) => {
+      const client = new Arcade({ apiKey: arcadeApiKey });
+      const result = await client.tools.execute({
+        tool_name: "GoogleSheets.GetSpreadsheet@3.0.0",
+        input: { spreadsheet_id: finalSpreadsheetId },
+        user_id: arcadeUserId,
+      });
+    }
+  });
+};
+```
+
+### 🔄 **Google Forms to Evaluation Pipeline**
+Automated hackathon submission processing:
+
+1. **📝 Form Submissions** - Participants submit via Google Forms (repo URL, demo video, description)
+2. **📊 Sheet Integration** - Responses automatically populate Google Sheets
+3. **🎮 Arcade Processing** - Google Sheets tool fetches new submissions
+4. **🤖 Auto-Evaluation** - Each row triggers template-reviewer-workflow
+5. **📈 Live Results** - Scores and rankings update in real-time
+
+### 🎯 **Benefits for Hackathon Organizers**
+- **⚡ Zero Manual Input** - Forms directly feed evaluation pipeline
+- **🔄 Real-time Processing** - Submissions evaluated as they arrive
+- **📊 Automated Tracking** - Complete audit trail from form to final score
+- **🏆 Instant Rankings** - Live leaderboard updates with new submissions
+
+### 🔧 **Container Setup** (`index.ts`)
 ```typescript
 import "reflect-metadata";
 import { Container } from "inversify";
@@ -623,10 +664,8 @@ src/mastra/
 │   └── services/        # 🔧 External service integrations
 │       └── video/       # 🎥 Video processing services
 ├── 🛠️ tools/           # Mastra tools for agent capabilities
-│   ├── sleep-tool.ts    # ⏸️ Delay utility tool
-│   ├── url-extractor-tool.ts # 🔗 URL extraction tool
-│   ├── weather-tool.ts  # 🌤️ Weather data tool
-│   └── web-search-tool.ts # 🔍 Web search capabilities
+│   ├── google-sheets-tool.ts # 📊 Google Sheets integration via Arcade AI
+│   └── list-projects-tool.ts # 📋 Project listing tool
 ├── 🔄 workflows/       # Business process workflows
 │   ├── template-reviewer-workflow/  # 📊 Main evaluation pipeline
 │   │   ├── claim-extractor.ts      # 🔍 Claims extraction step
@@ -634,7 +673,8 @@ src/mastra/
 │   │   ├── plan-maker.ts          # 📋 Test plan generation
 │   │   ├── scorer.ts              # ⭐ Evaluation scoring
 │   │   ├── tester.ts              # 🧪 Automated testing
-│   │   └── sample-input.json      # 📝 Example input data
+│   │   ├── sample-input.json      # 📝 Example input data
+│   │   └── sample-output.json     # 📊 Example output structure
 │   └── test-workflow.ts           # 🧪 Simple test workflow
 └── index.ts             # 🎯 Main application entry point
 ```
@@ -781,7 +821,11 @@ Here's an example of how to evaluate a Mastra template project using this system
 5. **⭐ Provides comprehensive scoring** across multiple criteria
 6. **🏷️ Auto-detects sponsor track eligibility** (MCP, auth, RAG, etc.)
 
-> 📁 **Full Example**: See the complete input structure in [`src/mastra/workflows/template-reviewer-workflow/sample-input.json`](src/mastra/workflows/template-reviewer-workflow/sample-input.json) for detailed formatting and additional fields.
+> **🧪 READY TO TEST**: The [`sample-input.json`](src/mastra/workflows/template-reviewer-workflow/sample-input.json) file contains a **fully working test case** that you can use immediately to test the evaluation system. This input evaluates the official Mastra PDF Questions template and demonstrates all evaluation features including claims extraction, test plan generation, automated testing, and comprehensive scoring.
+
+> **📊 EXAMPLE OUTPUT**: The [`sample-output.json`](src/mastra/workflows/template-reviewer-workflow/sample-output.json) file shows the complete result structure from a successful evaluation run. It demonstrates the comprehensive scoring, test results, sponsor track tags, and detailed analysis that the system produces for each evaluated project.
+
+> **✅ VERIFIED WORKING**: This sample input has been tested end-to-end and successfully evaluates the target project with full functionality validation, scoring, and sponsor track detection. Simply run the workflow with this input to see the complete evaluation process in action.
 
 ## 🛠️ Tech Stack
 
@@ -811,6 +855,7 @@ Here's an example of how to evaluate a Mastra template project using this system
 - **Evidence Collection** - Comprehensive interaction logging and analysis
 
 ### 🔧 **External Services**
+- **Arcade AI** - Google Sheets integration and tool ecosystem access
 - **TranscriptAPI** - Video transcript extraction and processing
 - **YouTube Integration** - Demo video analysis and content extraction
 - **Git Integration** - Automated repository cloning and project setup
@@ -832,6 +877,10 @@ Here's an example of how to evaluate a Mastra template project using this system
 - `mongodb`: 🗄️ MongoDB database driver
 - `zod`: ✅ Schema validation and type safety
 - `reflect-metadata`: 🎭 Decorator metadata reflection
+
+### 🎮 **Integration & Tools**
+- `@arcadeai/arcadejs`: 🎮 Arcade AI SDK for Google Sheets integration
+- `uuid`: 🆔 Unique identifier generation
 
 ### 🛠️ Development
 - `mastra`: 🔧 CLI tools for development and deployment

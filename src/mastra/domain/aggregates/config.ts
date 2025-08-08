@@ -8,13 +8,11 @@ export class Config {
   OPENAI_API_KEY: string;
   ANTHROPIC_API_KEY: string;
   GOOGLE_GENERATIVE_AI_API_KEY: string;
-  YT_TRANSCRIPT_API_KEY: string;
   constructor(props?: {
     DB_NAME?: string;
     MONGODB_URI?: string;
     OPENROUTER_API_KEY?: string;
     OPENAI_API_KEY?: string;
-    YT_TRANSCRIPT_API_KEY?: string;
   }) {
     this.DB_NAME =
       props?.DB_NAME ||
@@ -39,7 +37,6 @@ export class Config {
     this.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
     this.GOOGLE_GENERATIVE_AI_API_KEY =
       process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
-    this.YT_TRANSCRIPT_API_KEY = process.env.YT_TRANSCRIPT_API_KEY || "";
   }
 
   public get aiAPIKeys() {
@@ -51,7 +48,6 @@ export class Config {
       GOOGLE_GENERATIVE_AI_API_KEY: this.GOOGLE_GENERATIVE_AI_API_KEY,
     };
   }
-
 
   public get NPM_PATH() {
     return "npm";

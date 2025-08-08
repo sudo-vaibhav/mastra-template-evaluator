@@ -11,9 +11,10 @@ import { claimExtractorPrompt, claimsSchema } from "./claim-extractor.js";
 import { model } from "../../infra/model/index.js";
 import { generateObject } from "ai";
 import { planMakerOutputSchema, planMakerPrompt } from "./plan-maker.js";
-import { runPlansAgainstAgent } from "./tester.js";
 import { scorerOutputSchema } from "./scorer.js";
 import { scorerPrompt } from "./scorer.js";
+import { runPlansAgainstAgent } from "./tester.js";
+import { testerOutputSchema } from "./tester.js";
 
 const templateReviewerWorkflowInputSchema = z.object({
   name: z.string(),
@@ -32,6 +33,16 @@ const projectSetupStepInputSchema = z.object({
   port: z.string(),
   repoURL: z.string(),
   status: z.string(),
+  stats: z
+    .object({
+      architecture: z.object({
+        agents: z.object({ count: z.number() }),
+        tools: z.object({ count: z.number() }),
+        workflows: z.object({ count: z.number() }),
+      }),
+      detectedTechnologies: z.record(z.string(), z.boolean()),
+    })
+    .optional(),
 });
 const templateReviewerWorkflowOutputSchema = z.object({
   project: projectSetupStepInputSchema,
@@ -142,16 +153,25 @@ export const templateReviewerWorkflow = (container: Container) => {
           const project = inputData["setup-project-repo"];
           const claimsAndPlans = inputData["claims-extractor"];
 
-          // Execute plans against agent (max 5 iterations per plan)
-          const tests = await runPlansAgainstAgent({
-            port: project.port,
-            mainAgent: claimsAndPlans.mainAgent ?? null,
-            plans: claimsAndPlans.plans ?? [],
-          });
-
-          // Get project stats by scanning the repo
+          // Initialize project entity
           const projectEntity = projectFactory.create(project);
-          const projectStats = await projectEntity.getStats();
+
+          // Start target playground, run tests via workflow tester, then stop playground
+          let tests: z.infer<typeof testerOutputSchema> = [];
+          await projectEntity.startTargetServer();
+          try {
+            tests = await runPlansAgainstAgent({
+              port: project.port,
+              mainAgent: claimsAndPlans.mainAgent ?? null,
+              plans: claimsAndPlans.plans ?? [],
+            });
+          } finally {
+            await projectEntity.stopTargetServer();
+          }
+
+          // Get project stats by scanning the repo and persist on the entity
+          projectEntity.stats = await projectEntity.getStats();
+          await projectRepository.save(projectEntity);
 
           const prompt = scorerPrompt({
             project: {
@@ -160,7 +180,7 @@ export const templateReviewerWorkflow = (container: Container) => {
               repoURL: project.repoURL,
               videoURL: project.videoURL,
             },
-            projectStats,
+            projectStats: projectEntity.stats,
             claims: {
               mainAgent: claimsAndPlans.mainAgent ?? null,
               claims: claimsAndPlans.claims ?? [],
@@ -179,8 +199,13 @@ export const templateReviewerWorkflow = (container: Container) => {
           // Overwrite tests in scores with the actual execution results from tester
           scores = { ...scores, tests };
 
+          // Persist scores on the project entity
+          projectEntity.scores = scores;
+          await projectRepository.save(projectEntity);
+
+          // Return project info (schema omits scores) and scores separately
           return {
-            project: inputData["setup-project-repo"],
+            project: projectEntity.toDTO(),
             scores,
           };
         },

@@ -6,9 +6,13 @@ import { tmpdir } from "os";
 import degit from "degit";
 import { inject, injectable } from "inversify";
 import { Config } from "../config.js";
-import { exec, spawnSync } from "child_process";
+import { spawn, spawnSync, type ChildProcess } from "child_process";
 import { readdirSync, readFileSync, statSync } from "fs";
 import { globby } from "globby";
+import { z } from "zod";
+// Note: All AI chat/eval calls are intentionally kept out of the Project entity.
+import http from "http";
+import https from "https";
 /**
  * Represents a port in the system.
  * Constructor should pick a random port between 3000 and 9000 if not provided.
@@ -32,6 +36,26 @@ const AllowedProjectStatuses = [
 ] as const;
 type ProjectStatus = (typeof AllowedProjectStatuses)[number];
 
+// Strongly-typed shape for persisted scores (matches scorerOutputSchema)
+type TestResult = Array<{
+  id: string;
+  passed: boolean;
+  explanation: string;
+}>;
+
+export type ProjectScores = {
+  descriptionQuality: { score: number; explanation: string };
+  tests: TestResult;
+  appeal: { score: number; explanation: string };
+  creativity: { score: number; explanation: string };
+  architecture: {
+    agents: { count: number };
+    tools: { count: number };
+    workflows: { count: number };
+  };
+  tags: string[];
+};
+
 export class Project {
   name: string;
   id: Id;
@@ -43,6 +67,22 @@ export class Project {
   agentToEvaluate: string | null = null;
   envConfig: Record<string, string>;
   readonly config: Config;
+  // Persisted project stats for later reference
+  stats:
+    | {
+        architecture: {
+          agents: { count: number };
+          tools: { count: number };
+          workflows: { count: number };
+        };
+        detectedTechnologies: Record<string, boolean>;
+      }
+    | undefined;
+  // Persisted scoring results from evaluator
+  scores: ProjectScores | undefined;
+  // Runtime handle to target server process
+  private _serverProc?: ChildProcess;
+  private _cleanupRegistered = false;
   constructor(
     props: {
       name: string;
@@ -53,6 +93,8 @@ export class Project {
       port?: string;
       envConfig?: Record<string, string>;
       agentToEvaluate?: string | null;
+      stats?: Project["stats"]; // optional persisted stats
+      scores?: ProjectScores; // optional persisted scores
     } & (
       | {
           repoURLOrShorthand: string;
@@ -83,6 +125,8 @@ export class Project {
     this.description = props.description || "No description provided";
     this.envConfig = {};
     this.config = config;
+    this.stats = props.stats;
+    this.scores = props.scores;
   }
 
   /**
@@ -124,6 +168,8 @@ export class Project {
       port: this.port.number,
       repoURL: this.repoURL,
       status: this.status,
+      stats: this.stats,
+      scores: this.scores,
     };
   }
 
@@ -250,6 +296,108 @@ export class Project {
     };
   }
 
+  /** Absolute path to the cloned repo */
+  private get repoPath() {
+    return path.join(tmpdir(), this.id.value);
+  }
+
+  /**
+   * Start the target project's Mastra playground/server.
+   * Heuristic: prefer `npm run dev`, then `npm start`. PORT is forced to this.port.number.
+   */
+  async startTargetServer(): Promise<void> {
+    if (this._serverProc && !this._serverProc.killed) return; // already running
+    const pkg =
+      this.safeReadJSON(path.join(this.repoPath, "package.json")) || {};
+    const scripts = (pkg.scripts || {}) as Record<string, string>;
+    const hasDev = typeof scripts.dev === "string";
+    const hasStart = typeof scripts.start === "string";
+
+    const cmd = this.config.NPM_PATH;
+    const args = hasDev
+      ? ["run", "dev"]
+      : hasStart
+        ? ["start"]
+        : ["run", "dev"]; // default to dev
+
+    this._serverProc = spawn(cmd, args, {
+      cwd: this.repoPath,
+      env: {
+        ...process.env,
+        PORT: this.port.number,
+      },
+      stdio: "inherit",
+      shell: true,
+    });
+
+    this.registerExitCleanup();
+    await this.waitForServerReady(60_000);
+  }
+
+  /** Poll the server until it responds or timeout */
+  private async waitForServerReady(timeoutMs = 30000): Promise<void> {
+    const baseUrl = `http://localhost:${this.port.number}/`;
+    const start = Date.now();
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const tryPing = () =>
+      new Promise<void>((resolve, reject) => {
+        const lib = baseUrl.startsWith("https") ? https : http;
+        const req = lib.request(baseUrl, { method: "GET" }, (res) => {
+          // any response means server is up
+          res.resume();
+          resolve();
+        });
+        req.on("error", reject);
+        req.end();
+      });
+    while (Date.now() - start < timeoutMs) {
+      try {
+        await tryPing();
+        return;
+      } catch {
+        // ignore and retry
+      }
+      await sleep(500);
+    }
+    throw new Error(
+      `Target server did not become ready on ${baseUrl} within ${timeoutMs}ms`
+    );
+  }
+
+  /** Stop the target server if running */
+  async stopTargetServer(): Promise<void> {
+    if (this._serverProc && !this._serverProc.killed) {
+      try {
+        this._serverProc.kill("SIGTERM");
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  private registerExitCleanup() {
+    if (this._cleanupRegistered) return;
+    this._cleanupRegistered = true;
+    const cleanup = () => {
+      if (this._serverProc && !this._serverProc.killed) {
+        try {
+          this._serverProc.kill("SIGTERM");
+        } catch {}
+      }
+    };
+    process.on("exit", cleanup);
+    process.on("SIGINT", () => {
+      cleanup();
+      process.exit(1);
+    });
+    process.on("SIGTERM", () => {
+      cleanup();
+      process.exit(1);
+    });
+  }
+
+  // All chat/evaluation logic now lives in the template-reviewer workflow tester.
+
   private safeReadJSON(file: string): any | undefined {
     try {
       const txt = readFileSync(file, "utf-8");
@@ -257,33 +405,6 @@ export class Project {
     } catch {
       return undefined;
     }
-  }
-
-  private safeWalk(dir: string): string[] {
-    const out: string[] = [];
-    const stack = [dir];
-    while (stack.length) {
-      const d = stack.pop()!;
-      let entries: string[] = [];
-      try {
-        entries = readdirSync(d).map((n) => path.join(d, n));
-      } catch {
-        continue;
-      }
-      for (const pth of entries) {
-        const base = path.basename(pth);
-        if (["node_modules", ".git", ".mastra", "dist", "build"].includes(base))
-          continue;
-        try {
-          const st = statSync(pth);
-          if (st.isDirectory()) stack.push(pth);
-          else if (st.isFile()) out.push(pth);
-        } catch {
-          // ignore
-        }
-      }
-    }
-    return out.filter((f) => /\.(t|j)sx?$/.test(f));
   }
 
   private async conductNpmInstall(folder: string) {

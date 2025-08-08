@@ -7,6 +7,8 @@ import degit from "degit";
 import { inject, injectable } from "inversify";
 import { Config } from "../config.js";
 import { exec, spawnSync } from "child_process";
+import { readdirSync, readFileSync, statSync } from "fs";
+import { globby } from "globby";
 /**
  * Represents a port in the system.
  * Constructor should pick a random port between 3000 and 9000 if not provided.
@@ -137,6 +139,151 @@ export class Project {
       this.emitEnvInFolder(clonePath),
       this.conductNpmInstall(clonePath),
     ]);
+  }
+
+  /**
+   * Scans the cloned repository to infer architecture counts and sponsor-related technologies.
+   * Heuristics:
+   * - Architecture counts via directory names and common code patterns
+   * - Technologies via package.json dependencies and simple code string matches
+   */
+  async getStats(): Promise<{
+    architecture: {
+      agents: { count: number };
+      tools: { count: number };
+      workflows: { count: number };
+    };
+    detectedTechnologies: Record<string, boolean>;
+  }> {
+    const root = path.join(tmpdir(), this.id.value);
+
+    const pkg = this.safeReadJSON(path.join(root, "package.json"));
+    const allDeps = {
+      ...(pkg?.dependencies ?? {}),
+      ...(pkg?.devDependencies ?? {}),
+    } as Record<string, string>;
+
+    // Basic tech detection from deps and code
+    const hasDep = (name: string) => Boolean(allDeps[name]);
+
+    // File discovery via globby (fallback to manual walk)
+    // const srcDir = path.join(root, "src");
+    let files: string[] = [];
+    // try {
+    const rel = await globby(["src/**/*.{ts,tsx,js,jsx}"], {
+      cwd: root,
+      gitignore: true,
+      ignore: [
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/dist/**",
+        "**/build/**",
+        "**/.mastra/**",
+      ],
+      absolute: false,
+      onlyFiles: true,
+      followSymbolicLinks: false,
+    });
+    files = rel.map((p: string) => path.join(root, p));
+    // } catch {
+    //   files = this.safeWalk(srcDir);
+    // }
+
+    const readText = (fp: string) => {
+      try {
+        return readFileSync(fp, "utf-8");
+      } catch {
+        return "";
+      }
+    };
+
+    // Count heuristics
+    const agentsCount = files.filter(
+      (f) => /[/\\]agents[/\\]/.test(f) || /new\s+Agent\s*\(/.test(readText(f))
+    ).length;
+    const toolsCount = files.filter(
+      (f) => /[/\\]tools[/\\]/.test(f) || /createTool\s*\(/.test(readText(f))
+    ).length;
+    const workflowsCount = files.filter(
+      (f) =>
+        /[/\\]workflows[/\\]/.test(f) || /createWorkflow\s*\(/.test(readText(f))
+    ).length;
+
+    // Code pattern checks for technologies beyond deps
+    const anyFileIncludes = (substr: string | RegExp) =>
+      files.some((f) => {
+        const txt = readText(f);
+        return typeof substr === "string"
+          ? txt.includes(substr)
+          : substr.test(txt);
+      });
+
+    const detectedTechnologies: Record<string, boolean> = {
+      smithery: hasDep("@smithery/sdk"),
+      workos: hasDep("@workos/node"),
+      browserbase: hasDep("browserbase"),
+      arcade: hasDep("@arcadeai/arcadejs") || anyFileIncludes(/arcade-ai/),
+      chroma: hasDep("chromadb"),
+      // Crypto/Recall heuristic: common web3 libs or crypto indicators
+      recall:
+        hasDep("viem") ||
+        hasDep("ethers") ||
+        anyFileIncludes(/web3|wallet|ethers|viem/),
+      // Confident AI (Evals) heuristic: @mastra/evals or mentions of eval metrics
+      confidentAi:
+        hasDep("@mastra/evals") || anyFileIncludes(/\bevals?\b|Metric\s*\{/),
+      // Additional high-level features
+      rag: hasDep("chromadb") || anyFileIncludes(/retrieval|vector|embedding/i),
+      auth: hasDep("@workos/node") || anyFileIncludes(/auth|oauth|login/i),
+      webBrowsing:
+        hasDep("browserbase") ||
+        anyFileIncludes(/puppeteer|playwright|browserbase/i),
+    };
+
+    return {
+      architecture: {
+        agents: { count: agentsCount },
+        tools: { count: toolsCount },
+        workflows: { count: workflowsCount },
+      },
+      detectedTechnologies,
+    };
+  }
+
+  private safeReadJSON(file: string): any | undefined {
+    try {
+      const txt = readFileSync(file, "utf-8");
+      return JSON.parse(txt);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private safeWalk(dir: string): string[] {
+    const out: string[] = [];
+    const stack = [dir];
+    while (stack.length) {
+      const d = stack.pop()!;
+      let entries: string[] = [];
+      try {
+        entries = readdirSync(d).map((n) => path.join(d, n));
+      } catch {
+        continue;
+      }
+      for (const pth of entries) {
+        const base = path.basename(pth);
+        if (["node_modules", ".git", ".mastra", "dist", "build"].includes(base))
+          continue;
+        try {
+          const st = statSync(pth);
+          if (st.isDirectory()) stack.push(pth);
+          else if (st.isFile()) out.push(pth);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return out.filter((f) => /\.(t|j)sx?$/.test(f));
   }
 
   private async conductNpmInstall(folder: string) {

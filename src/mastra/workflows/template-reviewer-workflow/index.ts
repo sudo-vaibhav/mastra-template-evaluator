@@ -9,8 +9,9 @@ import z from "zod";
 import { VideoService } from "../../infra/services/video/index.js";
 import { claimExtractorPrompt, claimsSchema } from "./claim-extractor.js";
 import { model } from "../../infra/model/index.js";
-import { generateObject, } from "ai";
+import { generateObject } from "ai";
 import { planMakerOutputSchema, planMakerPrompt } from "./plan-maker.js";
+import { runPlansAgainstAgent } from "./tester.js";
 import { scorerOutputSchema } from "./scorer.js";
 import { scorerPrompt } from "./scorer.js";
 
@@ -33,10 +34,13 @@ const projectSetupStepInputSchema = z.object({
   status: z.string(),
 });
 const templateReviewerWorkflowOutputSchema = z.object({
-  project:projectSetupStepInputSchema,
-  scores: scorerOutputSchema
-})
-const combinedPlanAndClaimsSchema = z.object({...planMakerOutputSchema.shape,...claimsSchema.shape})
+  project: projectSetupStepInputSchema,
+  scores: scorerOutputSchema,
+});
+const combinedPlanAndClaimsSchema = z.object({
+  ...planMakerOutputSchema.shape,
+  ...claimsSchema.shape,
+});
 export const templateReviewerWorkflow = (container: Container) => {
   const projectRepository = container.get(ProjectRepository);
   const projectFactory = container.get(ProjectFactory);
@@ -90,7 +94,7 @@ export const templateReviewerWorkflow = (container: Container) => {
           return project.toDTO();
         },
         inputSchema: projectSetupStepInputSchema,
-        outputSchema:projectSetupStepInputSchema
+        outputSchema: projectSetupStepInputSchema,
       }),
       createStep({
         id: "claims-extractor",
@@ -109,56 +113,81 @@ export const templateReviewerWorkflow = (container: Container) => {
           const response = await generateObject({
             model,
             prompt: claimsPrompt,
-            schema: claimsSchema
+            schema: claimsSchema,
           });
 
           const plansOutput = await generateObject({
             model,
             schema: planMakerOutputSchema,
             prompt: planMakerPrompt(response.object),
-          })
-          return {...response.object, ...plansOutput.object}
+          });
+          return { ...response.object, ...plansOutput.object };
         },
         inputSchema: projectSetupStepInputSchema,
-        outputSchema:combinedPlanAndClaimsSchema ,
+        outputSchema: combinedPlanAndClaimsSchema,
       }),
     ])
-    .then(createStep(
-      {
+    .then(
+      createStep({
+        // inputSchema: combinedPlanAndClaimsSchema,
         outputSchema: templateReviewerWorkflowOutputSchema,
         inputSchema: z.object({
-          "setup-project-repo":projectSetupStepInputSchema,
-          "claims-extractor":combinedPlanAndClaimsSchema
+          "setup-project-repo": projectSetupStepInputSchema,
+          "claims-extractor": combinedPlanAndClaimsSchema,
         }),
-        execute: async ({ inputData }): Promise<z.infer<typeof templateReviewerWorkflowOutputSchema>> => {
+        execute: async ({
+          inputData,
+        }): Promise<z.infer<typeof templateReviewerWorkflowOutputSchema>> => {
           // Build scorer prompt from prior steps
-          const project = inputData["setup-project-repo"]; 
-          const claimsAndPlans = inputData["claims-extractor"]
-          
+          const project = inputData["setup-project-repo"];
+          const claimsAndPlans = inputData["claims-extractor"];
+
+          // Execute plans against agent (max 5 iterations per plan)
+          const tests = await runPlansAgainstAgent({
+            port: project.port,
+            mainAgent: claimsAndPlans.mainAgent ?? null,
+            plans: claimsAndPlans.plans ?? [],
+          });
+
+          // Get project stats by scanning the repo
+          const projectEntity = projectFactory.create(project);
+          const projectStats = await projectEntity.getStats();
+
           const prompt = scorerPrompt({
-            project: project,
+            project: {
+              name: project.name,
+              description: project.description,
+              repoURL: project.repoURL,
+              videoURL: project.videoURL,
+            },
+            projectStats,
             claims: {
               mainAgent: claimsAndPlans.mainAgent ?? null,
               claims: claimsAndPlans.claims ?? [],
             },
-            plans: { plans: claimsAndPlans.plans ?? [] },
+            plans: { plans: claimsAndPlans.plans },
           });
 
-          const scores = (await generateObject({
-            model,
-            prompt,
-            schema: scorerOutputSchema,
-          })).object;
+          let scores = (
+            await generateObject({
+              model,
+              prompt,
+              schema: scorerOutputSchema,
+            })
+          ).object;
+
+          // Overwrite tests in scores with the actual execution results from tester
+          scores = { ...scores, tests };
 
           return {
             project: inputData["setup-project-repo"],
             scores,
-          }
+          };
         },
         id: "executor-and-scorer",
-        description: `This step will execute the plans and score the results.`
-      }
-    ))
+        description: `This step will execute the plans and score the results.`,
+      })
+    )
     .commit();
 
   return workflow;

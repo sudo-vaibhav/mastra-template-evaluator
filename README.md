@@ -173,6 +173,136 @@ export const testerOutputSchema = z.array(z.object({
 }));
 ```
 
+## 🔗 Programmatic Agent Testing with Mastra Client
+
+A key innovation of this evaluation system is its ability to **programmatically control and test agents** running in separate Mastra playground instances. This is accomplished using the official `@mastra/client-js` library, enabling sophisticated cross-instance agent orchestration.
+
+### 🚀 Multi-Instance Testing Architecture
+
+The system operates using a **dual-playground architecture**:
+
+1. **🎯 Evaluator Instance** - Runs the Template Reviewer Workflow (main evaluation agent)
+2. **🔬 Target Instance** - Runs the project being evaluated (cloned and deployed automatically)
+
+**Key Innovation**: The evaluator agent can programmatically discover, connect to, and test agents running on completely different Mastra playground instances.
+
+### 📡 Official Mastra Client Integration
+
+The tester component leverages the **official Mastra JavaScript client** (`@mastra/client-js`) for seamless agent communication:
+
+```typescript
+import { MastraClient } from "@mastra/client-js";
+
+export async function runPlansAgainstAgent(props: {
+  port: string;
+  mainAgent: string | null;
+  plans: z.infer<typeof planMakerOutputSchema>["plans"];
+}) {
+  // Connect to target Mastra instance
+  const baseUrl = `http://localhost:${props.port}/`;
+  const client = new MastraClient({ baseUrl });
+  
+  // Discover available agents
+  const agents = await discoverAgentsWithClient(client);
+  // ... rest of testing logic
+}
+```
+
+### 🔍 Agent Discovery and Selection
+
+The system implements **intelligent agent discovery** using the official client API:
+
+```typescript
+async function discoverAgentsWithClient(
+  client: MastraClient
+): Promise<Array<{ id: string; name: string; toolsCount: number }>> {
+  const result = await client.getAgents();
+  const agents: Array<{ id: string; name: string; toolsCount: number }> = [];
+  
+  for (const [id, details] of Object.entries<any>(result || {})) {
+    const name = String(details?.name ?? id);
+    let toolsCount = 0;
+    
+    if (details && typeof details.tools === "object" && details.tools) {
+      toolsCount = Object.keys(details.tools).length;
+    } else {
+      // Fallback: query individual agent for tool details
+      try {
+        const agent = client.getAgent(id);
+        const tools = (await agent.details()).tools;
+        toolsCount = tools ? Object.keys(tools as any).length : 0;
+      } catch {
+        toolsCount = 0;
+      }
+    }
+    agents.push({ id, name, toolsCount });
+  }
+  return agents;
+}
+```
+
+### 💬 Threaded Conversation Testing
+
+The system uses **stateful conversation threads** for realistic multi-turn testing:
+
+```typescript
+async function sendChatWithClient(
+  client: MastraClient,
+  agentId: string,
+  messages: Messages,
+  threadId?: string
+): Promise<string> {
+  const agent = client.getAgent(agentId);
+  const res: any = await agent.generate({ messages, threadId });
+  
+  // Intelligent response parsing
+  if (typeof res === "string") return res;
+  if (typeof res.text === "string") return res.text;
+  if (typeof res.message === "string") return res.message;
+  if (typeof res.content === "string") return res.content;
+  
+  // Handle message arrays (conversation format)
+  if (Array.isArray(res.messages)) {
+    const last = res.messages[res.messages.length - 1];
+    if (last?.content) return String(last.content);
+  }
+  
+  return JSON.stringify(res);
+}
+```
+
+### 🎯 Context-Aware Testing Process
+
+The complete testing workflow demonstrates **professional agent orchestration**:
+
+1. **🔌 Client Connection** - Establishes connection to target Mastra instance using official client
+2. **🤖 Agent Discovery** - Queries available agents and their capabilities via client API
+3. **🎯 Smart Selection** - Chooses optimal agent based on name matching or tool count
+4. **🧵 Thread Management** - Creates stable conversation threads per test plan for context continuity
+5. **💬 Interactive Testing** - Conducts realistic chat-based validation of claimed functionality
+6. **📊 Evidence Collection** - Documents complete interaction transcripts for transparent scoring
+
+### 🏆 Why This Approach Matters for Judges
+
+This **professional client-based architecture** demonstrates several key advantages:
+
+#### 🔧 **Official Integration**
+- **✅ Standards Compliance**: Uses official Mastra client library, not custom API calls
+- **🔄 Future-Proof**: Benefits from official library updates and improvements
+- **🛡️ Error Handling**: Robust error handling through established client patterns
+
+#### 🧵 **Stateful Conversations**
+- **💬 Realistic Testing**: Multi-turn conversations with proper context preservation
+- **🎯 Thread Isolation**: Each test plan maintains its own conversation thread
+- **📈 Scalable Design**: Concurrent testing across multiple agent instances
+
+#### 🎯 **Intelligent Agent Selection**
+- **🤖 Capability-Aware**: Selects agents based on tool count and functionality
+- **🏷️ Name Matching**: Attempts to test the specific agent mentioned in project claims
+- **🔄 Fallback Logic**: Graceful handling when preferred agents aren't available
+
+This approach showcases **production-ready integration patterns** with the Mastra ecosystem, demonstrating how to build sophisticated agent orchestration systems using official tooling rather than ad-hoc API integrations.
+
 #### 5. **⭐ Scorer Component** (`scorer.ts`)
 **Purpose**: Provides comprehensive evaluation across multiple dimensions with detailed explanations.
 

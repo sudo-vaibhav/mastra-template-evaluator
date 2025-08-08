@@ -42,6 +42,11 @@ export const scorerPrompt = (props: {
     repoURL: string;
     videoURL: string;
   };
+  projectStats: Pick<z.infer<typeof scorerOutputSchema>, "architecture"> & {
+    detectedTechnologies: {
+      [key: string]: boolean;
+    };
+  };
   claims: z.infer<typeof claimsSchema>;
   plans: z.infer<typeof planMakerOutputSchema>;
 }) => {
@@ -55,6 +60,7 @@ Project
 - repoURL: ${project.repoURL}
 - videoURL: ${project.videoURL}
 - description: \n${project.description}
+- stats: ${JSON.stringify(props.projectStats, null, 2)}
 
 Extracted claims (present-tense capabilities)
 ${JSON.stringify(claims, null, 2)}

@@ -1,10 +1,10 @@
 import z from "zod";
 
-export const claimExtractorPrompt = (props:{
-    transcript: string;
-    documentation: string;
-})=>{
-    return `You are an expert technical analyst.
+export const claimExtractorPrompt = (props: {
+  transcript: string;
+  documentation: string;
+}) => {
+  return `You are an expert technical analyst.
 
 ## Context
 
@@ -46,6 +46,30 @@ A claim / promise is any statement of **present** capability, outcome, feature, 
 * **Exclude** future promises, wish‑lists, or “coming soon” features.
 * **Exclude** raw performance or other non‑functional metrics (e.g., speed, latency, uptime, scalability claims) that cannot be independently validated.
 
+## Examples
+
+**✅ EXTRACT these testable functional claims:**
+- "Searches the web for current information" 
+- "Summarizes PDF documents and includes findings in responses"
+- "Generates comprehensive research reports"
+- "Analyzes uploaded images and describes content"
+- "Integrates with external APIs to fetch real-time data"
+- "Maintains conversation context across multiple turns"
+- "Provides step-by-step instructions for tasks"
+- "Exports results in multiple formats (PDF, CSV, JSON)"
+
+**❌ DO NOT EXTRACT these untestable technical claims:**
+- "Works immediately after installation" (installation process can't be tested via chat)
+- "Reduces token usage by 80-95%" (performance metrics require system monitoring) 
+- "Lightning-fast response times" (speed claims need benchmarking tools)
+- "Uses advanced AI algorithms" (implementation details aren't user-facing)
+- "Optimized for production deployment" (infrastructure concerns aren't testable)
+- "Built with cutting-edge technology" (technology stack isn't a user feature)
+- "Scales to handle millions of users" (scalability requires load testing)
+- "99.9% uptime guarantee" (reliability metrics need long-term monitoring)
+- "Easy to integrate with existing systems" (integration ease isn't chat-testable)
+- "Follows industry best practices" (code quality isn't user-visible functionality)
+
 ## Sources
 
 **Documentation**
@@ -53,38 +77,31 @@ ${props.documentation}
 
 **Video transcript**
 ${props.transcript}
-`}
+`;
+};
 
+export const claimsSchema = z.object({
+  claims: z
+    .array(
+      z.object({
+        /**
+         * A concise, verb-first summary of the capability.
+         * Must be 10 words or fewer.
+         */
+        name: z.string().describe("Concise, verb-first summary (≤ 10 words)"),
 
-
-export const claimsSchema =  z.object({
-              mainAgent: z
-                .string()
-                .nullable()
-                .describe("kebab-case name of the primary agent, or null"),
-              claims: z
-                .array(
-                  z.object({
-                    /**
-                     * A concise, verb-first summary of the capability.
-                     * Must be 10 words or fewer.
-                     */
-                    name: z
-                      .string()
-                      .describe("Concise, verb-first summary (≤ 10 words)"),
-
-                    /**
-                     * The full claim text (or a faithful paraphrase) plus
-                     * an evidence snippet (≤ 25 words) with a line/time reference.
-                     */
-                    description: z
-                      .string()
-                      .describe(
-                        "Full claim text with ≤ 25-word evidence snippet and line/time code"
-                      ),
-                  })
-                )
-                .describe(
-                  "List of non-duplicative, present-tense claims extracted from the sources"
-                ),
-            })
+        /**
+         * The full claim text (or a faithful paraphrase) plus
+         * an evidence snippet (≤ 25 words) with a line/time reference.
+         */
+        description: z
+          .string()
+          .describe(
+            "Full claim text with ≤ 25-word evidence snippet and line/time code"
+          ),
+      })
+    )
+    .describe(
+      "List of non-duplicative, present-tense claims extracted from the sources"
+    ),
+});

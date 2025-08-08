@@ -28,10 +28,6 @@ export const scorerOutputSchema = z.object({
       count: z.number(),
     }),
   }),
-  // also emit tags based on package use
-  // @smithery/sdk
-  // @arcadeai/arcadejs or arcade-ai in code
-  // workos
   tags: z.array(z.string()),
 });
 

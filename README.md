@@ -1,6 +1,10 @@
+![intro image](./assets/image-2.png)
+
 # 🏆 Mastra.Build Hackathon Evaluator
 
 **Automated, unbiased evaluation system for Mastra.Build hackathon submissions using advanced multi-agent workflows.**
+
+🎥 **[Watch Demo Video](https://youtu.be/Di915MLrvDM)** - See the evaluator in action!
 
 This system revolutionizes hackathon judging by replacing subjective manual reviews with **systematic, data-driven evaluation**. Built specifically for the Mastra.Build hackathon, it automatically evaluates submitted projects, validates claimed features through live testing, and provides sponsor-aligned scoring with track eligibility detection.
 
@@ -24,6 +28,43 @@ This system transforms Mastra.Build evaluation from **"subjective demos" to "emp
 - **🏆 Automatically detects sponsor alignment** for prize categories (MCP servers, auth integration, web browsing, etc.)
 - **⚡ Scales to evaluate** hundreds of Mastra framework submissions efficiently
 - **📈 Provides detailed feedback** to help Mastra community members improve their agents
+
+## 🚀 Novel Approach: Mastra Evaluating Mastra
+
+**🎯 Revolutionary Insight**: This project demonstrates a groundbreaking approach to AI agent evaluation by **using the Mastra framework to evaluate Mastra-built agents**.
+
+### 🔄 Self-Evaluation Architecture
+
+Rather than building evaluation as a separate framework or external tool, we've created something unprecedented:
+
+- **🤖 Mastra Agents Evaluating Mastra Agents**: The evaluator itself is a sophisticated Mastra multi-agent workflow
+- **🔗 Native Framework Integration**: Deep understanding of Mastra patterns, conventions, and architectural decisions
+- **📡 Cross-Instance Communication**: Uses official `@mastra/client-js` to programmatically test agents running in separate Mastra instances
+- **🧬 Framework-Aware Testing**: Inherent knowledge of Mastra workflows, tools, and agent patterns enables more intelligent evaluation
+
+### 💡 Why This Matters Beyond Hackathons
+
+This **"framework evaluating itself"** approach represents a new paradigm in AI system assessment:
+
+**Traditional Approach** ❌:
+```
+External Eval Tool → Tests → AI Framework Project
+```
+
+**Our Novel Approach** ✅:
+```
+Mastra Evaluator Agent → Tests → Mastra Target Agent
+(Same framework, deep native understanding)
+```
+
+### 🎯 Unique Advantages
+
+- **🧠 Native Intelligence**: The evaluator inherently understands Mastra conventions, making evaluations more contextually accurate
+- **🔧 Self-Improving Ecosystem**: Insights from evaluations can directly improve the framework itself
+- **📊 Framework-Specific Metrics**: Evaluation criteria tailored specifically to Mastra's multi-agent, workflow-oriented architecture
+- **🚀 Proof of Concept**: Demonstrates Mastra's capability to build sophisticated, production-ready evaluation systems
+
+> **🎖️ Industry First**: To our knowledge, this is the first time a multi-agent framework has been used to systematically evaluate projects built with itself, showcasing both the maturity and self-reflective capabilities of the Mastra ecosystem.
 
 ## 🏆 Sponsor Prize Track Detection
 
@@ -56,7 +97,7 @@ The system automatically analyzes:
 > **⚠️ Important Note**: This system is designed to **assist and accelerate** the evaluation process, not replace human judgment. While it provides systematic analysis and scoring, **human review remains essential** for final prize decisions, especially for subjective categories like "Shane's favorite" and "Funniest". The AI evaluation serves as a comprehensive first-pass filter and detailed analysis tool for judges.
 
 ### 🎯 Key Features
-- **Domain-Driven Design (DDD)** - Clean architecture with well-defined domain boundaries
+- **⚙️ Environment Variable Injection** - Seamless config propagation from parent to testing playgrounds
 - **Dependency Injection** - Leverages InversifyJS for loose coupling and testability
 - **Multi-Agent Coordination** - Specialized agents working in orchestrated harmony
 - **Template Ready** - A complete Mastra template showcasing advanced patterns
@@ -76,7 +117,6 @@ The system uses a multi-agent pipeline with the following specialized components
 - **🆔 Unique Project ID**: Each evaluation uses a UUID for tracking and correlation
 - **📦 Structured Input/Output**: All agents communicate through well-defined Zod schemas
 - **🔀 Model Routing**: Uses OpenRouter for optimal LLM selection per task
-- **🔗 Link Checking**: Automated validation of documentation hyperlinks
 - **🏷️ Tag Generation**: Automatic keyword extraction for searchability
 
 ## 🔄 Template Reviewer Workflow Architecture
@@ -105,23 +145,21 @@ templateReviewerWorkflow = createWorkflow({
 
 ### 🔧 Core Workflow Components
 
-#### 1. **📊 Project Setup & Cloning** (`index.ts:55-77`)
+#### 1. **📊 Project Setup & Cloning**
 - Creates new project entity with UUID tracking
 - Persists project metadata to database
 - Initializes evaluation context with environment configuration
 
-#### 2. **🔍 Claims Extractor** (`claim-extractor.ts`)
-**Purpose**: Systematically extracts present-tense capability claims from project documentation and video transcripts.
+#### 2. **🔍 Claims Extractor** 
+**Purpose**: Systematically extracts capabilities claimed by template submitted from project documentation and video transcripts.
 
 Key features:
 - **📝 Dual-source analysis**: Processes both documentation and video transcripts
 - **🎯 Present-tense filtering**: Distinguishes between current capabilities vs future promises
 - **🏷️ Structured extraction**: Outputs standardized claim objects with evidence references
-- **🤖 Primary agent detection**: Identifies the main agent in kebab-case format
 
 ```typescript
 export const claimsSchema = z.object({
-  mainAgent: z.string().nullable().describe("kebab-case name of the primary agent, or null"),
   claims: z.array(z.object({
     name: z.string().describe("Concise, verb-first summary (≤ 10 words)"),
     description: z.string().describe("Full claim text with ≤ 25-word evidence snippet")
@@ -131,7 +169,8 @@ export const claimsSchema = z.object({
 
 **Why it's critical**: Claims extraction forms the foundation for all subsequent testing and evaluation. Without accurate claim identification, the testing phase cannot validate the right functionality.
 
-#### 3. **📋 Plan Maker** (`plan-maker.ts`)
+
+#### 3. **📋 Plan Maker**
 **Purpose**: Generates comprehensive test plans that validate extracted claims through systematic chat-based interactions.
 
 This component is **strategically vital** because it:
@@ -140,30 +179,16 @@ This component is **strategically vital** because it:
 - **🔄 Multi-plan generation**: Creates exactly 3 complementary test plans to maximize claim coverage
 - **💬 Chat-based validation**: Designs conversational tests that mirror real user interactions
 
-```typescript
-export const planMakerOutputSchema = z.object({
-  plans: z.array(z.object({
-    id: z.enum(['plan-1', 'plan-2', 'plan-3']),
-    title: z.string().min(3).max(120),
-    claims_targeted: z.array(z.string()).min(1),
-    steps: z.array(z.object({
-      message: z.string().min(1),
-      expected_agent_behavior: z.string().min(1),
-    })).min(2),
-    success_criteria: z.array(z.string()).min(1),
-    resourcesToUse: z.array(z.object({name: z.string(), url: z.string().nullable()}))
-  })).length(3)
-});
-```
-
 **Resource Kit Integration**:
-- **📄 Document Processing**: UDHR, Sherlock Holmes stories, AI Agent principles
+We understand that sample data must be needed to test out certain agents, we have already taken care of that! This evaluator includes sample data for the following:
+
+- **📄 Document Processing**: Universal Declaration of Human Rights, Sherlock Holmes stories, AI Agent principles Mastra book
 - **📊 Data Analysis**: Iris dataset, Penguins dataset, Apple stock data  
 - **🌐 Web Content**: Hacker News, Wikipedia pages
 - **🌍 Location Data**: Coordinates for weather-related testing
 
 #### 4. **🧪 Tester Component** (`tester.ts`)
-**Purpose**: Executes the generated test plans and validates agent responses against success criteria.
+**Purpose**: Executes the generated test plans and validates agent responses against success criteria. It uses a multi-pass tester-validator loop to chat with target agent and verify if the target agent does what it claims in its documentation and video demos
 
 ```typescript
 export const testerOutputSchema = z.array(z.object({
@@ -195,49 +220,15 @@ import { MastraClient } from "@mastra/client-js";
 
 export async function runPlansAgainstAgent(props: {
   port: string;
-  mainAgent: string | null;
   plans: z.infer<typeof planMakerOutputSchema>["plans"];
 }) {
   // Connect to target Mastra instance
   const baseUrl = `http://localhost:${props.port}/`;
   const client = new MastraClient({ baseUrl });
   
-  // Discover available agents
+  // Discover available agents and choose the one with most tools
   const agents = await discoverAgentsWithClient(client);
   // ... rest of testing logic
-}
-```
-
-### 🔍 Agent Discovery and Selection
-
-The system implements **intelligent agent discovery** using the official client API:
-
-```typescript
-async function discoverAgentsWithClient(
-  client: MastraClient
-): Promise<Array<{ id: string; name: string; toolsCount: number }>> {
-  const result = await client.getAgents();
-  const agents: Array<{ id: string; name: string; toolsCount: number }> = [];
-  
-  for (const [id, details] of Object.entries<any>(result || {})) {
-    const name = String(details?.name ?? id);
-    let toolsCount = 0;
-    
-    if (details && typeof details.tools === "object" && details.tools) {
-      toolsCount = Object.keys(details.tools).length;
-    } else {
-      // Fallback: query individual agent for tool details
-      try {
-        const agent = client.getAgent(id);
-        const tools = (await agent.details()).tools;
-        toolsCount = tools ? Object.keys(tools as any).length : 0;
-      } catch {
-        toolsCount = 0;
-      }
-    }
-    agents.push({ id, name, toolsCount });
-  }
-  return agents;
 }
 ```
 
@@ -273,7 +264,7 @@ async function sendChatWithClient(
 
 ### 🎯 Context-Aware Testing Process
 
-The complete testing workflow demonstrates **professional agent orchestration**:
+The complete testing workflow demonstrates:
 
 1. **🔌 Client Connection** - Establishes connection to target Mastra instance using official client
 2. **🤖 Agent Discovery** - Queries available agents and their capabilities via client API
@@ -296,12 +287,12 @@ This **professional client-based architecture** demonstrates several key advanta
 - **🎯 Thread Isolation**: Each test plan maintains its own conversation thread
 - **📈 Scalable Design**: Concurrent testing across multiple agent instances
 
-#### 🎯 **Intelligent Agent Selection**
-- **🤖 Capability-Aware**: Selects agents based on tool count and functionality
-- **🏷️ Name Matching**: Attempts to test the specific agent mentioned in project claims
-- **🔄 Fallback Logic**: Graceful handling when preferred agents aren't available
+#### 🎯 **Tool-Based Agent Selection**
+- **🔧 Tool-Centric**: Always selects the agent with the highest tool count for comprehensive testing
+- **📊 Objective Criteria**: Uses quantifiable metrics (tool count) rather than subjective name matching
+- **🎯 Optimal Coverage**: Ensures testing against the most capable agent available
 
-This approach showcases **production-ready integration patterns** with the Mastra ecosystem, demonstrating how to build sophisticated agent orchestration systems using official tooling rather than ad-hoc API integrations.
+This approach showcases **integration patterns** with the Mastra ecosystem, demonstrating how to build sophisticated agent orchestration systems using official tooling rather than ad-hoc API integrations.
 
 #### 5. **⭐ Scorer Component** (`scorer.ts`)
 **Purpose**: Provides comprehensive evaluation across multiple dimensions with detailed explanations.
@@ -374,7 +365,6 @@ Our claims extractor would identify these present-tense capabilities:
 
 ```json
 {
-  "mainAgent": "research-agent",
   "claims": [
     {
       "name": "Implements interactive human-in-loop research system",
@@ -497,6 +487,9 @@ Our plan maker would create 3 targeted **chat-based test plans**:
 }
 ```
 
+![
+  Sample Result View
+](./assets/image.png)
 ### 🧪 Sample Test Results
 ```json
 [
@@ -571,51 +564,9 @@ The AI automatically detected sponsor eligibilities based on:
 - **`eligible-recall`**: Crypto/blockchain functionality
 - **`eligible-confident-ai`**: Evaluation frameworks integration
 
-### 🎯 Key Advantages Over Manual Review
-
-1. **📊 Turn-by-Turn Testing**: Each message tests specific functionality without relying on workflow control
-2. **🔗 URL Embedding**: All resources (PDFs, websites, datasets) are provided directly in chat messages
-3. **🧪 Functional Validation**: Tests actual agent responses against concrete success criteria
-4. **📈 Reproducible Results**: Same inputs produce consistent evaluation outcomes
-5. **🎯 Claim-Driven Testing**: Every test directly validates a stated project capability
-6. **🏆 Automated Prize Detection**: AI identifies sponsor track eligibility without human bias
-
-### 🏛️ Domain-Driven Design (DDD) Implementation
-This template demonstrates **production-grade DDD patterns** - the first and only example in Mastra's template library:
-
-#### 📋 **Project Aggregate** (`domain/aggregates/project/`)
-```typescript
-// Complete aggregate with invariants and business rules
-class ProjectAggregate {
-  private constructor(private props: ProjectProps) {}
-  
-  static create(data: CreateProjectData): Either<Error, ProjectAggregate>
-  evaluateDocumentation(): DocumentationScore
-  extractPromises(): Promise[]
-  // Encapsulated business logic with domain validation
-}
-```
-
-#### 💎 **Value Objects** (`shared/value-objects/`)
-```typescript
-// Immutable domain concepts
-class ProjectId extends ValueObject<string> {
-  static create(value: string): Either<Error, ProjectId>
-  // Type-safe identifiers with validation
-}
-```
-
-#### 🔄 **Use Cases** (`application/use-cases/`)
-```typescript
-// Clean application services
-class CreateProjectUseCase {
-  execute(command: CreateProjectCommand): Promise<Either<Error, ProjectDto>>
-  // Orchestrates domain operations without business logic
-}
-```
 
 ### 💉 Dependency Injection Architecture
-**Comprehensive IoC implementation** using InversifyJS - completely missing from current templates:
+**Comprehensive IoC implementation** using InversifyJS - a nice add for mastra templates library in my opinion:
 
 #### 🔧 **Container Setup** (`index.ts`)
 ```typescript
@@ -651,24 +602,41 @@ container.rebind(PROJECT_REPO_SYMBOL).toConstantValue(mockRepo);
 ```
 src/mastra/
 ├── 🤖 agents/           # AI agents for specialized evaluation tasks
+│   ├── claims-extractor-agent.ts     # 🔍 Claims extraction specialist
 │   ├── template-reviewer-agent.ts    # 📋 Main coordinator agent
 │   └── weather-agent.ts              # 🌤️ Example weather agent
-├── 🔄 application/      # Use cases and application logic
-│   └── use-cases/       # 🎯 Domain-specific use cases
-│       ├── adapter.ts   # 🔌 External service adapters
-│       ├── base.ts      # 🏗️ Base use case patterns
-│       └── project/     # 📊 Project evaluation workflows
 ├── 🏛️ domain/          # Domain entities and business logic
 │   ├── aggregates/      # 📁 Domain aggregates and configuration
 │   │   ├── config.ts    # ⚙️ Application configuration
 │   │   └── project/     # 📋 Project domain model
 │   └── shared/          # 💎 Shared value objects
+│       └── value-objects/
+│           ├── id.ts    # 🆔 Type-safe identifiers
+│           └── index.ts # 📤 Value object exports
 ├── 🏗️ infra/           # Infrastructure layer
 │   ├── database/        # 🗄️ MongoDB connection and setup
+│   │   └── mongodb.ts   # 📊 Database configuration
 │   ├── model/           # 🧠 AI model configuration
-│   └── repositories/    # 📚 Data persistence layer
+│   │   └── index.ts     # 🤖 OpenRouter model setup
+│   ├── repositories/    # 📚 Data persistence layer
+│   │   └── project.ts   # 📋 Project data access
+│   └── services/        # 🔧 External service integrations
+│       └── video/       # 🎥 Video processing services
 ├── 🛠️ tools/           # Mastra tools for agent capabilities
-└── 🔄 workflows/       # Business process workflows
+│   ├── sleep-tool.ts    # ⏸️ Delay utility tool
+│   ├── url-extractor-tool.ts # 🔗 URL extraction tool
+│   ├── weather-tool.ts  # 🌤️ Weather data tool
+│   └── web-search-tool.ts # 🔍 Web search capabilities
+├── 🔄 workflows/       # Business process workflows
+│   ├── template-reviewer-workflow/  # 📊 Main evaluation pipeline
+│   │   ├── claim-extractor.ts      # 🔍 Claims extraction step
+│   │   ├── index.ts               # 🚀 Workflow orchestration
+│   │   ├── plan-maker.ts          # 📋 Test plan generation
+│   │   ├── scorer.ts              # ⭐ Evaluation scoring
+│   │   ├── tester.ts              # 🧪 Automated testing
+│   │   └── sample-input.json      # 📝 Example input data
+│   └── test-workflow.ts           # 🧪 Simple test workflow
+└── index.ts             # 🎯 Main application entry point
 ```
 
 ## ✨ Features
@@ -690,13 +658,13 @@ src/mastra/
 ### 🎁 Template Contribution to Mastra Ecosystem
 This project represents a **groundbreaking addition to Mastra's template library**, introducing enterprise-grade architectural patterns that are currently missing from the official collection:
 
-#### 🏛️ **Domain-Driven Design (DDD) Pioneer**
-- **🥇 First of Its Kind** - The only DDD implementation in Mastra's entire template library
-- **📋 Complete Aggregate Implementation** - Showcases Project aggregates with proper encapsulation
-- **💎 Value Objects Excellence** - ID value objects demonstrating immutability patterns
-- **🔄 Use Case Architecture** - Clean application services following DDD principles
-- **🗄️ Repository Pattern** - Proper data access abstraction maintaining domain boundaries
-- **⚙️ Domain Configuration** - Centralized configuration management within domain context
+#### ⚙️ **Seamless Environment Variable Injection**
+- **🔗 Parent-to-Child Propagation** - Automatically injects parent playground's environment variables into testing playgrounds
+- **�️ API Key Inheritance** - Testing environments inherit all AI API keys from the evaluator playground
+- **🎯 Zero-Config Testing** - Target projects receive all necessary environment variables without manual setup
+- **🔄 Dynamic Configuration Merging** - Combines parent playground config with project-specific environment variables
+- **� Effortless Multi-Instance Testing** - Eliminates setup friction for cross-playground agent communication
+- **⚡ Automated Environment Provisioning** - Testing playgrounds get fully configured environments automatically
 
 #### 💉 **Dependency Injection Mastery** 
 - **🚨 Critical Gap Filled** - Addresses the complete absence of DI examples in current templates
@@ -705,6 +673,28 @@ This project represents a **groundbreaking addition to Mastra's template library
 - **⚡ Lifecycle Management** - Singleton scoping and proper resource management
 - **🧪 Testability Focus** - Architecture designed for easy mocking and unit testing
 - **📦 Modular Design** - Loosely coupled components for maximum flexibility
+
+#### ⚙️ **Advanced Environment Variable Management**
+A critical innovation for **seamless multi-playground testing**:
+
+```typescript
+// Automatic environment injection from parent to testing playgrounds
+envConfig: {
+  ...container.get(Config).aiAPIKeys,  // Parent playground's AI keys
+  ...inputData.envConfig,              // Project-specific overrides
+}
+```
+
+**Key Benefits**:
+- **🔗 Zero-Config Testing** - Testing playgrounds inherit all necessary API keys automatically
+- **🎯 Parent-Child Propagation** - Evaluator playground shares environment with target projects
+- **🛠️ AI Provider Continuity** - OpenRouter, OpenAI, and other API keys propagate seamlessly
+- **⚙️ Configuration Merging** - Smart combination of parent config with project-specific variables
+- **🚀 Friction-Free Setup** - Eliminates manual environment setup for cross-instance testing
+- **🔒 Secure Key Management** - Centralizes API key management in the parent evaluator instance
+
+**Why This Matters for Mastra Templates**:
+This pattern solves a **critical pain point** in multi-instance Mastra deployments where testing environments need access to the same API keys and configurations as the parent system, enabling truly automated evaluation workflows.
 
 #### 🏢 **Enterprise-Ready Architecture**
 Unlike other templates focused on simple demos, this showcases:
@@ -763,6 +753,67 @@ The system can evaluate projects by:
 - 🎯 Extracting and verifying feature claims
 - 🧪 Running automated tests and validations
 - 📝 Generating comprehensive evaluation reports with scores and feedback
+
+### 📋 Example Evaluation Input
+
+Here's an example of how to evaluate a Mastra template project using this system. The evaluator takes a structured input describing the project to be assessed:
+
+```json
+{
+  "name": "PDF to Questions Generator",
+  "repoURLOrShorthand": "mastra-ai/template-pdf-questions",
+  "videoURL": "https://youtu.be/WQ0rvX8ajeg",
+  "description": "A Mastra template that demonstrates **how to protect against token limits** by generating AI summaries from large datasets before passing as output from tool calls..."
+}
+```
+
+**Key Input Fields:**
+- **`name`**: Human-readable project name for identification
+- **`repoURLOrShorthand`**: GitHub repository (full URL or `owner/repo` format)
+- **`videoURL`**: YouTube demo video for functionality analysis
+- **`description`**: Full project documentation in markdown format
+
+**What the evaluator does with this input:**
+1. **🔄 Clones the repository** and sets up the project environment
+2. **📝 Extracts claims** from both documentation and video transcript
+3. **🧪 Generates test plans** to validate claimed functionality
+4. **🤖 Runs automated tests** by interacting with the deployed agent
+5. **⭐ Provides comprehensive scoring** across multiple criteria
+6. **🏷️ Auto-detects sponsor track eligibility** (MCP, auth, RAG, etc.)
+
+> 📁 **Full Example**: See the complete input structure in [`src/mastra/workflows/template-reviewer-workflow/sample-input.json`](src/mastra/workflows/template-reviewer-workflow/sample-input.json) for detailed formatting and additional fields.
+
+## 🛠️ Tech Stack
+
+### 🎯 **Core Framework**
+- **Mastra** - Multi-agent orchestration and workflow management
+- **TypeScript** - Type-safe development with full IntelliSense support
+- **Node.js** - Runtime environment for scalable server-side applications
+
+### 🤖 **AI & LLM Integration**
+- **OpenRouter** - Multi-provider LLM routing with model selection optimization
+- **AI SDK** - Vercel's AI SDK for streamlined language model interactions
+- **Mastra Client** - Official client library for cross-instance agent communication
+
+### 🗄️ **Data & Storage**
+- **MongoDB** - Document database for project metadata, evaluations, and scoring data
+- **Zod** - Schema validation and type-safe data parsing
+- **UUID** - Unique identifier generation for project tracking
+
+### 🏗️ **Architecture & Design**
+- **⚙️ Environment Variable Injection** - Seamless config propagation from parent to testing playgrounds
+- **Dependency Injection** - InversifyJS IoC container for loose coupling and testability
+- **Repository Pattern** - Data access abstraction with clean interfaces
+
+### 🧪 **Testing & Quality**
+- **Multi-Agent Testing** - Automated agent interaction validation
+- **Chat-based Validation** - Conversational testing with stateful threads
+- **Evidence Collection** - Comprehensive interaction logging and analysis
+
+### 🔧 **External Services**
+- **TranscriptAPI** - Video transcript extraction and processing
+- **YouTube Integration** - Demo video analysis and content extraction
+- **Git Integration** - Automated repository cloning and project setup
 
 ## 📦 Dependencies
 
@@ -856,13 +907,13 @@ This architecture provides several advantages over single-agent approaches:
 #### 🌟 **Template Library Leadership**
 This template **pioneers critical architectural patterns** missing from Mastra's current library:
 
-- **🏛️ Domain-Driven Design**: First and only DDD implementation in Mastra templates
+- **⚙️ Environment Variable Injection**: Seamless config propagation from parent to testing playgrounds
 - **💉 Dependency Injection**: Professional IoC container setup with InversifyJS
 - **🏢 Enterprise Architecture**: Production-ready patterns for complex business logic
 - **🧪 Systematic Testing**: Multi-agent evaluation workflows for quality assurance
 
 #### 📚 **Educational Excellence**
-- **📖 Reference Implementation**: Complete DDD + DI example for enterprise developers
+- **📖 Reference Implementation**: Complete environment injection + DI example for enterprise developers
 - **🎯 Real Business Logic**: Project evaluation domain demonstrates complex workflows
 - **🔧 Best Practices**: Proper error handling, logging, and monitoring integration
 - **⚡ Scalability Patterns**: Built to handle hundreds of concurrent evaluations
@@ -874,6 +925,10 @@ This template **pioneers critical architectural patterns** missing from Mastra's
 - **🔮 Ecosystem Foundation**: Enables complex multi-agent applications in production
 
 ## 🙏 Acknowledgments
+
+Thanks to the [Mastra team](https://mastra.ai) for creating the [PDF Questions template](https://mastra.ai/templates/pdf-questions) which was used as a target to test this evaluation tool. 
+
+I've uploaded a demo video to YouTube at https://www.youtube.com/watch?v=WQ0rvX8ajeg just to test things out - if the Mastra team would like it taken down, please reach out!
 
 Thanks to [TranscriptAPI](https://transcriptapi.com/) for providing video transcription services with permission for this hackathon project.
 

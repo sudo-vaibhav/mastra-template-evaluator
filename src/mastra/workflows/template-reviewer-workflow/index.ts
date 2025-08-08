@@ -8,13 +8,13 @@ import { Config } from "../../domain/aggregates/config.js";
 import z from "zod";
 import { VideoService } from "../../infra/services/video/index.js";
 import { claimExtractorPrompt, claimsSchema } from "./claim-extractor.js";
-import { model } from "../../infra/model/index.js";
-import { generateObject } from "ai";
+import { generateObject, type LanguageModel } from "ai";
 import { planMakerOutputSchema, planMakerPrompt } from "./plan-maker.js";
 import { scorerOutputSchema } from "./scorer.js";
 import { scorerPrompt } from "./scorer.js";
 import { runPlansAgainstAgent } from "./tester.js";
 import { testerOutputSchema } from "./tester.js";
+import { MODEL_SYMBOL } from "../../infra/model/index.js";
 
 const templateReviewerWorkflowInputSchema = z.object({
   name: z.string(),
@@ -24,7 +24,7 @@ const templateReviewerWorkflowInputSchema = z.object({
   envConfig: z.record(z.string(), z.string()).optional(),
 });
 
-const projectSetupStepInputSchema = z.object({
+export const projectSetupStepInputSchema = z.object({
   name: z.string(),
   id: z.string().uuid(),
   videoURL: z.string(),
@@ -33,6 +33,7 @@ const projectSetupStepInputSchema = z.object({
   port: z.string(),
   repoURL: z.string(),
   status: z.string(),
+  envConfig: z.record(z.string(), z.string()),
   stats: z
     .object({
       architecture: z.object({
@@ -55,6 +56,7 @@ const combinedPlanAndClaimsSchema = z.object({
 export const templateReviewerWorkflow = (container: Container) => {
   const projectRepository = container.get(ProjectRepository);
   const projectFactory = container.get(ProjectFactory);
+  const model = container.get<LanguageModel>(MODEL_SYMBOL);
   const workflow = createWorkflow({
     id: "template-reviewer-workflow",
     description: `You are a coordinator that launches the full template-review workflow.
@@ -92,16 +94,21 @@ export const templateReviewerWorkflow = (container: Container) => {
     )
     .parallel([
       createStep({
-        // clone and npm install and env creation
         id: "setup-project-repo",
         description: "Clone the repo, do npm install and create env",
         execute: async ({ inputData }) => {
-          const project = projectFactory.create(inputData);
+          const project = projectFactory.create({ ...inputData });
+
+          // Update status to setting-up
           project.status = "setting-up";
           await projectRepository.save(project);
+
           await project.setup();
+
+          // Update status to ready
           project.status = "ready";
           await projectRepository.save(project);
+
           return project.toDTO();
         },
         inputSchema: projectSetupStepInputSchema,
@@ -113,10 +120,9 @@ export const templateReviewerWorkflow = (container: Container) => {
         execute: async ({ inputData }) => {
           const proj = projectFactory.create(inputData);
           const description = proj.description;
-          const videoURL = proj.canonicalVideoURL;
           const transcript = await container
             .get(VideoService)
-            .getTranscript(videoURL);
+            .getTranscript(proj.videoId);
           const claimsPrompt = claimExtractorPrompt({
             transcript: transcript,
             documentation: description,
@@ -140,7 +146,6 @@ export const templateReviewerWorkflow = (container: Container) => {
     ])
     .then(
       createStep({
-        // inputSchema: combinedPlanAndClaimsSchema,
         outputSchema: templateReviewerWorkflowOutputSchema,
         inputSchema: z.object({
           "setup-project-repo": projectSetupStepInputSchema,
@@ -149,27 +154,27 @@ export const templateReviewerWorkflow = (container: Container) => {
         execute: async ({
           inputData,
         }): Promise<z.infer<typeof templateReviewerWorkflowOutputSchema>> => {
-          // Build scorer prompt from prior steps
           const project = inputData["setup-project-repo"];
           const claimsAndPlans = inputData["claims-extractor"];
 
-          // Initialize project entity
           const projectEntity = projectFactory.create(project);
 
-          // Start target playground, run tests via workflow tester, then stop playground
+          // Update status to evaluating
+          projectEntity.status = "evaluating";
+          await projectRepository.save(projectEntity);
+
           let tests: z.infer<typeof testerOutputSchema> = [];
           await projectEntity.startTargetServer();
           try {
             tests = await runPlansAgainstAgent({
               port: project.port,
-              mainAgent: claimsAndPlans.mainAgent ?? null,
               plans: claimsAndPlans.plans ?? [],
+              model: model,
             });
           } finally {
             await projectEntity.stopTargetServer();
           }
 
-          // Get project stats by scanning the repo and persist on the entity
           projectEntity.stats = await projectEntity.getStats();
           await projectRepository.save(projectEntity);
 
@@ -182,7 +187,6 @@ export const templateReviewerWorkflow = (container: Container) => {
             },
             projectStats: projectEntity.stats,
             claims: {
-              mainAgent: claimsAndPlans.mainAgent ?? null,
               claims: claimsAndPlans.claims ?? [],
             },
             plans: { plans: claimsAndPlans.plans },
@@ -196,14 +200,14 @@ export const templateReviewerWorkflow = (container: Container) => {
             })
           ).object;
 
-          // Overwrite tests in scores with the actual execution results from tester
           scores = { ...scores, tests };
 
-          // Persist scores on the project entity
           projectEntity.scores = scores;
+
+          // Update status to evaluated
+          projectEntity.status = "evaluated";
           await projectRepository.save(projectEntity);
 
-          // Return project info (schema omits scores) and scores separately
           return {
             project: projectEntity.toDTO(),
             scores,

@@ -14,7 +14,7 @@ Some agents you'd be testing might rely on external data or resources. You can u
 **PDFs**
 
 * "Universal Declaration of Human Rights (UDHR)" — [https://www.ohchr.org/sites/default/files/UDHR/Documents/UDHR_Translations/eng.pdf](https://www.ohchr.org/sites/default/files/UDHR/Documents/UDHR_Translations/eng.pdf)
-* Adventures of Sherlock Holmes — https://sherlock-holm.es/stories/pdf/letter/1-sided/advs.pdf
+* Sherlock Holmes Yellow Face story — https://raw.githubusercontent.com/sudo-vaibhav/mastra-template-evaluator/main/assets/SherlockHolmes-the-yellow-face-story.pdf
 *  Bonus Points for using this one: Principles of Building AI Agents (Sam Bhagwat, co-founder of Mastra) - [https://hs-47815345.f.hubspotemail.net/hub/47815345/hubfs/book/principles_2nd_edition_updated.pdf]
 
 **CSVs**
@@ -77,7 +77,7 @@ Given "main_agent" and "claims[]", propose **exactly three** end‑to‑end chat
    * **teardown** – optional cleanup.
 ### Here is the claim and agent data to use:
 ${JSON.stringify(props, null, 2)}
-`
+`;
 }
 // Reuse the claim names from the ClaimsExtractionSchema input.
 

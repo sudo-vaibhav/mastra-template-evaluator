@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { planMakerOutputSchema } from "./plan-maker.js";
-import { generateObject } from "ai";
-import { model } from "../../infra/model/index.js";
+import { generateObject, type LanguageModel } from "ai";
 import { MastraClient } from "@mastra/client-js";
 
 export const testerOutputSchema = z.array(
@@ -12,17 +11,12 @@ export const testerOutputSchema = z.array(
   })
 );
 
-// Internal schema used for per-step acceptance checks
 const stepAcceptanceSchema = z.object({
   met: z.boolean(),
   justification: z.string(),
 });
 
 type Messages = Array<{ role: "user" | "assistant"; content: string }>; // minimal chat shape
-
-function normalizeAgentName(name: string) {
-  return name.toLowerCase().replace(/[^a-z]/g, "");
-}
 
 async function discoverAgentsWithClient(
   client: MastraClient
@@ -38,7 +32,7 @@ async function discoverAgentsWithClient(
       try {
         const agent = client.getAgent(id);
         const tools = (await agent.details()).tools;
-        toolsCount = tools ? Object.keys(tools as any).length : 0;
+        toolsCount = tools ? Object.keys(tools).length : 0;
       } catch {
         toolsCount = 0;
       }
@@ -52,10 +46,20 @@ async function sendChatWithClient(
   client: MastraClient,
   agentId: string,
   messages: Messages,
-  threadId?: string
+  threadId?: string,
+  resourceId?: string
 ): Promise<string> {
   const agent = client.getAgent(agentId);
-  const res: any = await agent.generate({ messages, threadId });
+  const generateParams: any = { messages };
+  
+  if (threadId) {
+    generateParams.threadId = threadId;
+  }
+  if (resourceId) {
+    generateParams.resourceid = resourceId;
+  }
+  
+  const res: any = await agent.generate(generateParams);
   if (!res) return "";
   if (typeof res === "string") return res;
   if (typeof res.text === "string") return res.text;
@@ -117,7 +121,7 @@ Return JSON with { "met": boolean, "justification": string }.
 
 export async function runPlansAgainstAgent(props: {
   port: string;
-  mainAgent: string | null;
+  model: LanguageModel;
   plans: z.infer<typeof planMakerOutputSchema>["plans"];
 }): Promise<z.infer<typeof testerOutputSchema>> {
   const baseUrl = `http://localhost:${props.port}/`;
@@ -125,27 +129,13 @@ export async function runPlansAgainstAgent(props: {
   const agents = await discoverAgentsWithClient(client);
 
   let chosenAgentId: string | undefined;
-  if (props.mainAgent && agents.length) {
-    const target = normalizeAgentName(props.mainAgent);
-    for (const a of agents) {
-      const n1 = normalizeAgentName(a.name);
-      const n2 = normalizeAgentName(a.id);
-      if (n1 === target || n2 === target) {
-        chosenAgentId = a.id;
-        break;
-      }
-    }
-  }
-  // If no matching agent is found, choose the agent with the most tools
-  if (!chosenAgentId) {
-    if (agents.length) {
-      const withMostTools = agents.reduce((best, curr) =>
-        curr.toolsCount > best.toolsCount ? curr : best
-      );
-      chosenAgentId = withMostTools.id;
-    } else {
-      chosenAgentId = "default";
-    }
+  if (agents.length) {
+    const withMostTools = agents.reduce((best, curr) =>
+      curr.toolsCount > best.toolsCount ? curr : best
+    );
+    chosenAgentId = withMostTools.id;
+  } else {
+    chosenAgentId = "default";
   }
 
   const results: Array<z.infer<typeof testerOutputSchema>[number]> = [];
@@ -160,7 +150,6 @@ export async function runPlansAgainstAgent(props: {
     const maxIters = Math.min(5, plan.steps.length);
     for (let i = 0; i < maxIters; i++) {
       const step = plan.steps[i]!;
-      // Send user message
       messages.push({ role: "user", content: step.message });
       let assistantReply = "";
       try {
@@ -168,7 +157,8 @@ export async function runPlansAgainstAgent(props: {
           client,
           chosenAgentId,
           messages,
-          threadId
+          threadId,
+          plan.id // Use plan.id as resourceId for memory context
         );
       } catch (err: any) {
         assistantReply = `Error talking to agent: ${err?.message || String(err)}`;
@@ -180,11 +170,14 @@ export async function runPlansAgainstAgent(props: {
         assistant: assistantReply,
       });
 
-      // Ask evaluator if success criteria are met so far
       try {
         const prompt = buildAcceptancePrompt(plan, i, transcript);
         const evalObj = (
-          await generateObject({ model, prompt, schema: stepAcceptanceSchema })
+          await generateObject({
+            model: props.model,
+            prompt,
+            schema: stepAcceptanceSchema,
+          })
         ).object;
         if (evalObj.met) {
           met = true;
@@ -197,12 +190,15 @@ export async function runPlansAgainstAgent(props: {
       }
     }
 
-    // Final verdict if not already met
     if (!met) {
       try {
         const prompt = buildFinalVerdictPrompt(plan, transcript);
         const finalObj = (
-          await generateObject({ model, prompt, schema: stepAcceptanceSchema })
+          await generateObject({
+            model: props.model,
+            prompt,
+            schema: stepAcceptanceSchema,
+          })
         ).object;
         met = finalObj.met;
         justification = finalObj.justification;
